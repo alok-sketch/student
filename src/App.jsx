@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { AnnouncementBar } from './components/AnnouncementBar'
 import { Header } from './components/Header'
 import { HeroBanner } from './components/HeroBanner'
@@ -8,22 +8,30 @@ import { CartDrawer } from './components/CartDrawer'
 import { WishlistDrawer } from './components/WishlistDrawer'
 import { ProductModal } from './components/ProductModal'
 import { AuthModal } from './components/AuthModal'
+import { OrdersModal } from './components/OrdersModal'
 import { Footer } from './components/Footer'
 import { CATEGORIES, FEATURED_NOTEBOOKS, ALL_PRODUCTS } from './data/products'
 import { ArrowRight, CheckCircle2 } from './components/Icons'
+import { api } from './api'
 import './App.css'
 
 export default function App() {
+  const [user, setUser] = useState(() => api.getUser())
   const [cart, setCart] = useState([])
   const [wishlist, setWishlist] = useState([])
   const [isCartOpen, setIsCartOpen] = useState(false)
   const [isWishlistOpen, setIsWishlistOpen] = useState(false)
   const [isAuthOpen, setIsAuthOpen] = useState(false)
+  const [isOrdersOpen, setIsOrdersOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeNav, setActiveNav] = useState('home')
   const [toast, setToast] = useState(null)
+
+  // Products from backend (initialized with mock fallback)
+  const [productsList, setProductsList] = useState(ALL_PRODUCTS)
+  const [featuredList, setFeaturedList] = useState(FEATURED_NOTEBOOKS)
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -32,8 +40,89 @@ export default function App() {
     }, 2800)
   }
 
+  // 1. Fetch dynamic products from Backend API on mount
+  useEffect(() => {
+    api
+      .getProducts()
+      .then((data) => {
+        if (data && data.length > 0) {
+          setProductsList(data)
+          const featured = data.filter((p) => p.isFeatured)
+          if (featured.length > 0) {
+            setFeaturedList(featured)
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend API not responding, using offline catalog fallback:', err.message)
+      })
+  }, [])
+
+  // 2. Fetch User Profile and remote Cart/Wishlist when user is authenticated
+  useEffect(() => {
+    if (user) {
+      // Refresh current user data
+      api
+        .getMe()
+        .then((res) => {
+          if (res.user) setUser(res.user)
+        })
+        .catch(() => {
+          // Token might be invalid or expired
+          api.logout()
+          setUser(null)
+        })
+
+      // Fetch user's cart from backend
+      api
+        .getCart()
+        .then((remoteCart) => {
+          if (Array.isArray(remoteCart)) {
+            setCart(remoteCart)
+          }
+        })
+        .catch(console.error)
+
+      // Fetch user's wishlist from backend
+      api
+        .getWishlist()
+        .then((remoteWishlist) => {
+          if (Array.isArray(remoteWishlist)) {
+            setWishlist(remoteWishlist)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [user])
+
+  // Auth operations
+  const handleAuthSuccess = async (authUser) => {
+    setUser(authUser)
+    showToast(`Welcome back, ${authUser.emailOrPhone}!`)
+
+    // Sync any guest cart items with backend
+    if (cart.length > 0) {
+      try {
+        const syncedCart = await api.syncCart(cart)
+        if (Array.isArray(syncedCart)) {
+          setCart(syncedCart)
+        }
+      } catch (err) {
+        console.error('Failed to sync guest cart:', err)
+      }
+    }
+  }
+
+  const handleLogout = () => {
+    api.logout()
+    setUser(null)
+    setCart([])
+    setWishlist([])
+    showToast('Signed out successfully', 'info')
+  }
+
   // Cart operations
-  const handleAddToCart = (product, quantity = 1) => {
+  const handleAddToCart = async (product, quantity = 1) => {
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id)
       if (existing) {
@@ -44,42 +133,92 @@ export default function App() {
       return [...prevCart, { ...product, quantity }]
     })
     showToast(`Added "${product.name}" to cart!`)
+
+    if (user) {
+      try {
+        await api.addToCart(product.id, quantity)
+      } catch (err) {
+        console.error('Failed to persist cart item to backend:', err)
+      }
+    }
   }
 
-  const handleUpdateQuantity = (productId, quantity) => {
+  const handleUpdateQuantity = async (productId, quantity) => {
     if (quantity <= 0) {
       handleRemoveFromCart(productId)
       return
     }
+
     setCart((prevCart) =>
       prevCart.map((item) => (item.id === productId ? { ...item, quantity } : item))
     )
+
+    if (user) {
+      try {
+        await api.updateCartQuantity(productId, quantity)
+      } catch (err) {
+        console.error('Failed to update cart quantity on backend:', err)
+      }
+    }
   }
 
-  const handleRemoveFromCart = (productId) => {
+  const handleRemoveFromCart = async (productId) => {
     setCart((prevCart) => prevCart.filter((item) => item.id !== productId))
+
+    if (user) {
+      try {
+        await api.removeFromCart(productId)
+      } catch (err) {
+        console.error('Failed to remove cart item on backend:', err)
+      }
+    }
   }
 
-  const handleClearCart = () => {
+  const handleClearCart = async () => {
     setCart([])
+    if (user) {
+      try {
+        await api.clearCart()
+      } catch (err) {
+        console.error('Failed to clear cart on backend:', err)
+      }
+    }
   }
 
   // Wishlist operations
-  const handleToggleWishlist = (product) => {
-    setWishlist((prevWishlist) => {
-      const exists = prevWishlist.some((item) => item.id === product.id)
-      if (exists) {
-        showToast(`Removed from wishlist`, 'info')
-        return prevWishlist.filter((item) => item.id !== product.id)
-      } else {
-        showToast(`Saved "${product.name}" to wishlist!`)
-        return [...prevWishlist, product]
+  const handleToggleWishlist = async (product) => {
+    const exists = wishlist.some((item) => item.id === product.id)
+    if (exists) {
+      showToast('Removed from wishlist', 'info')
+      setWishlist((prevWishlist) => prevWishlist.filter((item) => item.id !== product.id))
+    } else {
+      showToast(`Saved "${product.name}" to wishlist!`)
+      setWishlist((prevWishlist) => [...prevWishlist, product])
+    }
+
+    if (user) {
+      try {
+        const res = await api.toggleWishlist(product.id)
+        if (res && res.wishlist) {
+          setWishlist(res.wishlist)
+        }
+      } catch (err) {
+        console.error('Failed to toggle wishlist on backend:', err)
       }
-    })
+    }
   }
 
-  const handleRemoveWishlist = (productId) => {
+  const handleRemoveWishlist = async (productId) => {
     setWishlist((prev) => prev.filter((item) => item.id !== productId))
+
+    if (user) {
+      try {
+        const res = await api.removeFromWishlist(productId)
+        if (Array.isArray(res)) setWishlist(res)
+      } catch (err) {
+        console.error('Failed to remove wishlist item on backend:', err)
+      }
+    }
   }
 
   // Navigation handling
@@ -117,7 +256,7 @@ export default function App() {
 
   // Filtered products for browsing or search
   const filteredProducts = useMemo(() => {
-    return ALL_PRODUCTS.filter((product) => {
+    return productsList.filter((product) => {
       const matchesCategory = selectedCategory ? product.category === selectedCategory : true
       const matchesSearch = searchQuery
         ? product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -125,7 +264,7 @@ export default function App() {
         : true
       return matchesCategory && matchesSearch
     })
-  }, [selectedCategory, searchQuery])
+  }, [productsList, selectedCategory, searchQuery])
 
   const totalCartCount = cart.reduce((acc, item) => acc + item.quantity, 0)
   const isNotebooksOnly = !selectedCategory && !searchQuery
@@ -147,10 +286,13 @@ export default function App() {
         activeNav={activeNav}
         onNavClick={handleNavClick}
         categories={CATEGORIES}
+        user={user}
+        onLogout={handleLogout}
+        onOpenOrders={() => setIsOrdersOpen(true)}
       />
 
       <main>
-        {/* 3. Hero Banner Section matching screenshot */}
+        {/* 3. Hero Banner Section */}
         {!searchQuery && (
           <HeroBanner
             onCtaClick={(catId) => {
@@ -160,7 +302,7 @@ export default function App() {
           />
         )}
 
-        {/* 4. Category Icons Strip matching screenshot */}
+        {/* 4. Category Icons Strip */}
         {!searchQuery && (
           <CategoryBar
             categories={CATEGORIES}
@@ -169,7 +311,7 @@ export default function App() {
           />
         )}
 
-        {/* 5. Featured Notebooks Section matching screenshot */}
+        {/* 5. Featured Notebooks Section */}
         {isNotebooksOnly && (
           <section className="featured-section" id="featured-notebooks">
             <div className="section-container">
@@ -189,7 +331,7 @@ export default function App() {
               </div>
 
               <div className="product-grid five-columns">
-                {FEATURED_NOTEBOOKS.map((product) => (
+                {featuredList.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
@@ -274,6 +416,8 @@ export default function App() {
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveFromCart}
         onClearCart={handleClearCart}
+        user={user}
+        onOrderSuccess={(order) => showToast(`Order #${order.id} placed!`)}
       />
 
       {/* Slide-over Wishlist Drawer */}
@@ -297,7 +441,17 @@ export default function App() {
       )}
 
       {/* Student Login / Signup Modal */}
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+
+      {/* User Orders History Modal */}
+      <OrdersModal
+        isOpen={isOrdersOpen}
+        onClose={() => setIsOrdersOpen(false)}
+      />
 
       {/* Toast Notification */}
       {toast && (

@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Database and Environment
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+server/data/
+.env
+.env.*

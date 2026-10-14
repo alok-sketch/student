@@ -20,10 +20,14 @@ export function Header({
   onSearchChange,
   activeNav,
   onNavClick,
-  categories = []
+  categories = [],
+  user = null,
+  onLogout = null,
+  onOpenOrders = null,
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [shopDropdownOpen, setShopDropdownOpen] = useState(false)
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false)
 
   return (
     <header className="main-header">
@@ -71,15 +75,109 @@ export function Header({
 
           {/* Right Actions */}
           <div className="header-actions">
-            <button
-              type="button"
-              className="action-btn auth-btn"
-              onClick={onOpenAuth}
-              id="header-auth-btn"
-            >
-              <User size={18} />
-              <span>Login / Signup</span>
-            </button>
+            {user ? (
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="action-btn auth-btn"
+                  onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                  style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}
+                >
+                  <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 'bold' }}>
+                    {user.emailOrPhone.charAt(0).toUpperCase()}
+                  </div>
+                  <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.emailOrPhone.split('@')[0]}
+                  </span>
+                  <ChevronDown size={14} />
+                </button>
+
+                {userDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      right: 0,
+                      background: '#fff',
+                      borderRadius: '10px',
+                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid #e2e8f0',
+                      minWidth: '200px',
+                      zIndex: 100,
+                      padding: '8px 0',
+                    }}
+                  >
+                    <div style={{ padding: '8px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                      <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: '#1e293b' }}>
+                        {user.emailOrPhone}
+                      </p>
+                      {user.collegeName && (
+                        <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                          🎓 {user.collegeName}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false)
+                        if (onOpenOrders) onOpenOrders()
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        color: '#334155',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      📦 My Orders
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false)
+                        if (onLogout) onLogout()
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 16px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        color: '#dc2626',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        borderTop: '1px solid #f1f5f9',
+                      }}
+                    >
+                      🚪 Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="action-btn auth-btn"
+                onClick={onOpenAuth}
+                id="header-auth-btn"
+              >
+                <User size={18} />
+                <span>Login / Signup</span>
+              </button>
+            )}
 
             <button
               type="button"

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight, ShieldCheck, Tag } from './Icons'
 import { NotebookCover } from './NotebookCover'
+import { api } from '../api'
 
 export function CartDrawer({
   isOpen,
@@ -8,13 +9,16 @@ export function CartDrawer({
   cartItems = [],
   onUpdateQuantity,
   onRemoveItem,
-  onClearCart
+  onClearCart,
+  user = null,
+  onOrderSuccess = null,
 }) {
   const [promoCode, setPromoCode] = useState('')
   const [appliedDiscount, setAppliedDiscount] = useState(0)
   const [promoError, setPromoError] = useState('')
   const [isCheckingOut, setIsCheckingOut] = useState(false)
-  const [orderPlaced, setOrderPlaced] = useState(false)
+  const [orderResult, setOrderResult] = useState(null)
+  const [checkoutError, setCheckoutError] = useState('')
 
   if (!isOpen) return null
 
@@ -36,13 +40,31 @@ export function CartDrawer({
     }
   }
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     setIsCheckingOut(true)
-    setTimeout(() => {
-      setIsCheckingOut(false)
-      setOrderPlaced(true)
+    setCheckoutError('')
+    try {
+      const res = await api.placeOrder({
+        items: cartItems,
+        subtotal,
+        discountAmount,
+        deliveryFee,
+        total,
+        promoCode: appliedDiscount > 0 ? promoCode : '',
+        customerName: user ? user.emailOrPhone : 'Hostel Student',
+        contact: user ? user.emailOrPhone : 'Campus Student',
+        hostelAddress: user && user.collegeName ? `${user.collegeName} Hostel` : 'Campus Hostel Delivery',
+        paymentMethod: 'Cash on Delivery',
+      })
+
+      setOrderResult(res.order)
+      if (onOrderSuccess) onOrderSuccess(res.order)
       onClearCart()
-    }, 1200)
+    } catch (err) {
+      setCheckoutError(err.message || 'Failed to place order. Please try again.')
+    } finally {
+      setIsCheckingOut(false)
+    }
   }
 
   return (
@@ -86,16 +108,19 @@ export function CartDrawer({
         </div>
 
         {/* Content */}
-        {orderPlaced ? (
+        {orderResult ? (
           <div className="order-success-screen">
             <div className="success-icon-wrap">✓</div>
             <h3>Order Confirmed!</h3>
-            <p>Thank you for ordering with StudentBazaar! Your notebooks will arrive in 2–3 hours right at your campus/hostel.</p>
+            <p style={{ fontWeight: 600, color: '#059669', margin: '4px 0 8px' }}>
+              Order ID: #{orderResult.id}
+            </p>
+            <p>Thank you for ordering with StudentBazaar! Your order has been registered in the database and will arrive in 2–3 hours right at your campus/hostel.</p>
             <button
               type="button"
               className="continue-shopping-btn"
               onClick={() => {
-                setOrderPlaced(false)
+                setOrderResult(null)
                 onClose()
               }}
             >
@@ -204,6 +229,12 @@ export function CartDrawer({
                   <span className="total-amount">₹{total}</span>
                 </div>
               </div>
+
+              {checkoutError && (
+                <div style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', padding: '8px 12px', borderRadius: '6px', fontSize: '0.825rem', marginBottom: '10px' }}>
+                  {checkoutError}
+                </div>
+              )}
 
               <button
                 type="button"
